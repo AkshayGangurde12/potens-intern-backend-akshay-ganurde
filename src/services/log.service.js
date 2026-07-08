@@ -22,9 +22,11 @@ const { AppError } = require('../errors/AppError');
  *
  * Workflow:
  *   1. Read the latest entry to determine previousHash.
- *   2. Compute currentHash (genesis or chain).
- *   3. Persist inside a Prisma transaction.
- *   4. Return the saved record.
+ *   2. For the first record: set previousHash = "GENESIS"
+ *      For subsequent records: set previousHash = latest.currentHash
+ *   3. Compute currentHash using SHA256(previousHash + actor + action + payload + createdAt)
+ *   4. Persist inside a Prisma transaction.
+ *   5. Return the saved record.
  *
  * @param {{ actor: string, action: string, payload?: object|null }} dto
  * @returns {Promise<object>}
@@ -38,7 +40,8 @@ async function createLogEntry(dto) {
   let currentHash;
 
   if (latest === null) {
-    previousHash = null;
+    // First record — store "GENESIS" as previousHash per assessment specification
+    previousHash = hashService.GENESIS_PREVIOUS_HASH;
     currentHash = hashService.createGenesisHash(actor, action, payload, createdAt);
   } else {
     previousHash = latest.currentHash;

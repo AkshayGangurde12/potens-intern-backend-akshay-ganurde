@@ -19,10 +19,10 @@ const crypto = require('crypto');
 
 /**
  * Sentinel previousHash value used when computing the genesis entry's hash.
- * Stored as the literal string "0" — never null — so computeHash stays pure.
+ * Stored as the literal string "GENESIS" in the database for the first record.
  * @type {string}
  */
-const GENESIS_PREVIOUS_HASH = '0';
+const GENESIS_PREVIOUS_HASH = 'GENESIS';
 
 // ─── Core hash primitive ──────────────────────────────────────────────────────
 
@@ -30,7 +30,7 @@ const GENESIS_PREVIOUS_HASH = '0';
  * Compute a SHA-256 hex digest from structured log-entry data.
  *
  * Field serialisation order (must never change once data exists in DB):
- *   actor | action | payload (JSON or "null") | previousHash | createdAt (ISO)
+ *   previousHash | actor | action | payload (JSON or "null") | createdAt (ISO)
  *
  * @param {{
  *   actor?: string,
@@ -46,12 +46,12 @@ function generateHash(data) {
   // Support both `createdAt` (new) and `timestamp` (legacy) field names
   const ts = data.createdAt || data.timestamp;
   const input = [
+    data.previousHash,
     data.actor,
     data.action,
     data.payload !== null && data.payload !== undefined
       ? JSON.stringify(data.payload)
       : 'null',
-    data.previousHash,
     ts instanceof Date ? ts.toISOString() : String(ts),
   ].join('|');
 
@@ -70,7 +70,8 @@ const computeHash = generateHash;
 
 /**
  * Compute the hash for the very first entry (genesis).
- * Uses the sentinel "0" as previousHash.
+ * Uses the sentinel "GENESIS" as previousHash, which is also what is
+ * persisted to the database for the first record.
  *
  * @param {string}      actor
  * @param {string}      action
@@ -139,9 +140,12 @@ function verifyEntry(entry, resolvedPreviousHash) {
  * Walk all entries in createdAt ASC order and verify the entire hash chain.
  *
  * Checks:
- *   1. previousHash linkage (each entry references the prior entry's currentHash)
- *   2. currentHash integrity (stored hash matches recomputed hash)
- *   3. Chronological order (entries are already assumed sorted by caller)
+ *   1. First record previousHash must be "GENESIS" (or null for backward compatibility)
+ *   2. previousHash linkage (each entry references the prior entry's currentHash)
+ *   3. currentHash integrity (stored hash matches recomputed hash)
+ *   4. Chronological order (entries are already assumed sorted by caller)
+ *
+ * Backward compatibility: treats null on the first record as equivalent to "GENESIS".
  *
  * @param {Array<{
  *   id: string,
@@ -169,9 +173,25 @@ function verifyEntireChain(entries) {
 
   for (let i = 0; i < entries.length; i++) {
     const entry = entries[i];
+    
+    // For the first entry: accept either "GENESIS" or null (backward compatibility)
+    if (i === 0) {
+      if (entry.previousHash !== GENESIS_PREVIOUS_HASH && entry.previousHash !== null) {
+        return {
+          success: false,
+          totalEntries: entries.length,
+          brokenEntryId: entry.id,
+          reason: 'First record previousHash must be "GENESIS" or null',
+          expectedHash: GENESIS_PREVIOUS_HASH,
+          actualHash: entry.previousHash ?? 'null',
+        };
+      }
+    }
+    
+    // Resolve previousHash for hashing: use GENESIS for first entry, prior currentHash for rest
     const resolvedPreviousHash = i === 0 ? GENESIS_PREVIOUS_HASH : entries[i - 1].currentHash;
 
-    // Check previousHash linkage (genesis entry should have null in DB; non-genesis must match)
+    // Check previousHash linkage (non-genesis entries must match prior currentHash)
     if (i > 0 && entry.previousHash !== entries[i - 1].currentHash) {
       return {
         success: false,
