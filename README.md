@@ -613,3 +613,5 @@ npm run test:coverage
 Built with Node.js · Express · PostgreSQL · Prisma · Docker
 
 </div>
+#   p o t e n s - i n t e r n - b a c k e n d - s h r e y a s - t h o m b a l  
+ 
