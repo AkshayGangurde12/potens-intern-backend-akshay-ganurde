@@ -1,0 +1,51 @@
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: tamper-postgres
+
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-log_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme}
+      POSTGRES_DB: ${POSTGRES_DB:-tamper_log}
+
+    ports:
+      - "5432:5432"
+
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-log_user} -d ${POSTGRES_DB:-tamper_log}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+    restart: unless-stopped
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+
+    container_name: tamper-app
+
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      DATABASE_URL: postgresql://${POSTGRES_USER:-log_user}:${POSTGRES_PASSWORD:-changeme}@postgres:5432/${POSTGRES_DB:-tamper_log}
+      API_KEY: ${API_KEY}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      RATE_LIMIT_MAX: ${RATE_LIMIT_MAX:-100}
+      RATE_LIMIT_WINDOW_MS: ${RATE_LIMIT_WINDOW_MS:-60000}
+
+    ports:
+      - "3000:3000"
+
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
