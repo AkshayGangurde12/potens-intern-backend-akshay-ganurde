@@ -41,10 +41,10 @@ function timingSafeEqual(provided, expected) {
  * @param {import('express').NextFunction} next
  */
 function requireApiKey(req, res, next) {
-  const provided = req.headers['x-api-key'];
+  const provided = req.header('x-api-key');
 
   if (!provided || !timingSafeEqual(String(provided), config.apiKey)) {
-    return res.status(401).json({ error: 'Unauthorized' });
+    return res.status(401).json({ success: false, error: 'Unauthorized' });
   }
 
   return next();
