@@ -5,7 +5,6 @@
  * All /api/* routes — every route is protected by API key auth.
  * @module routes/log
  */
-
 const { Router } = require('express');
 const { requireApiKey } = require('../middlewares/auth.middleware');
 const { validateBody } = require('../middlewares/validate.middleware');
